@@ -1,8 +1,14 @@
 [project]
-name = "api"
+name = "app"
 version = "0.1.0"
 description = "Backend for monet"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.115.3",
+    "opencv-python>=4.10.0.84",
+    "python-multipart>=0.0.12",
+    "video-utils",
 ]
+
+[tool.uv.sources]
+video-utils = { git = "ssh://git@gitlab.buawei.com/recherche/tools/video-utils" }
