@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TogglableButtonGroup } from "./buttons";
 import { useVideoFrames } from "../hooks/useVideoFrames";
-import { useQueryClient } from "@tanstack/react-query";
 
 interface CanvasProps {
   selectedVideo: string;

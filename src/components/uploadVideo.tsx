@@ -31,6 +31,7 @@ export function UploadVideo({ onUpload }: UploadVideoProps) {
 
       if (response.ok) {
         setUploadStatus("Upload successful!");
+        onUpload();
       } else {
         const errorData = await response.json();
         setUploadStatus(`Upload failed: ${errorData.detail[0].msg}`);

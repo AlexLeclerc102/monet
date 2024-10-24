@@ -1,4 +1,4 @@
-import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Canvas } from "./components/canvas";
 import { useState } from "react";
 import { UploadVideo } from "./components/uploadVideo";
