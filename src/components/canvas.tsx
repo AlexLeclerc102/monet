@@ -8,16 +8,29 @@ interface CanvasProps {
 
 const canvasSize = { width: 800, height: 600 };
 
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
+  color: string;
+}
+
+interface FrameData {
+  boxes: Box[];
+  points: Point[];
+}
+
 export function Canvas({ selectedVideo }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [mode, setMode] = useState<"box" | "point_pos" | "point_neg">("box");
-  const [boxes, setBoxes] = useState<
-    { x: number; y: number; width: number; height: number }[]
-  >([]);
-  const [points, setPoints] = useState<
-    { x: number; y: number; color: string }[]
-  >([]);
+  const [frameData, setFrameData] = useState<Record<number, FrameData>>({});
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
     null
   );
@@ -43,7 +56,7 @@ export function Canvas({ selectedVideo }: CanvasProps) {
 
     const image = new Image();
 
-    if (!backgroundImage) return;
+    if (!backgroundImage || !query.data) return;
 
     image.src = "data:image/jpeg;base64," + backgroundImage;
     image.onload = () => {
@@ -52,22 +65,27 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       context.strokeStyle = "red";
       context.lineWidth = 2;
 
-      boxes.forEach((box) => {
+      const currentFrameData = frameData[query.data.frame_number] || {
+        boxes: [],
+        points: [],
+      };
+
+      currentFrameData.boxes.forEach((box) => {
         context.strokeRect(box.x, box.y, box.width, box.height);
       });
 
-      points.forEach((point) => {
+      currentFrameData.points.forEach((point) => {
         context.beginPath();
         context.arc(point.x, point.y, 5, 0, 2 * Math.PI);
         context.fillStyle = point.color;
         context.fill();
       });
     };
-  }, [backgroundImage, boxes, points]);
+  }, [backgroundImage, frameData, query.data?.frame_number]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || !query.data) return;
     const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
     if (mode === "box") {
@@ -75,12 +93,25 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       setIsDrawing(true);
     } else if (mode === "point_pos" || mode === "point_neg") {
       const color = mode === "point_pos" ? "blue" : "red";
-      setPoints((prevPoints) => [...prevPoints, { ...pos, color }]);
+      const currentFrameNumber = query.data.frame_number;
+      setFrameData((prevFrameData) => {
+        const currentFrameData = prevFrameData[currentFrameNumber] || {
+          boxes: [],
+          points: [],
+        };
+        return {
+          ...prevFrameData,
+          [currentFrameNumber]: {
+            ...currentFrameData,
+            points: [...currentFrameData.points, { ...pos, color }],
+          },
+        };
+      });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawing || !startPos || mode !== "box") return;
+    if (!isDrawing || !startPos || mode !== "box" || !query.data) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const currentPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -90,7 +121,20 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       width: currentPos.x - startPos.x,
       height: currentPos.y - startPos.y,
     };
-    setBoxes((prevBoxes) => [...prevBoxes.slice(0, -1), newBox]);
+    const currentFrameNumber = query.data.frame_number;
+    setFrameData((prevFrameData) => {
+      const currentFrameData = prevFrameData[currentFrameNumber] || {
+        boxes: [],
+        points: [],
+      };
+      return {
+        ...prevFrameData,
+        [currentFrameNumber]: {
+          ...currentFrameData,
+          boxes: [...currentFrameData.boxes.slice(0, -1), newBox],
+        },
+      };
+    });
   };
 
   const handleMouseUp = () => {
@@ -98,26 +142,36 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     setStartPos(null);
   };
 
-  if (query.isPending) {
-    return <div>Loading video...</div>;
-  }
+  const handleNextFrame = () => {
+    nextFrame();
+  };
+
+  const handlePrevFrame = () => {
+    prevFrame();
+  };
 
   if (query.isError) {
     return <div>{query.error.message}</div>;
   }
 
   return (
-    <div className="m-5 ">
-      <div className="text-2xl font-bold">Canvas</div>
-      <div className="flex ">
+    <div className="inline-block p-4 bg-white shadow rounded-lg">
+      <div className="text-2xl font-bold ">
+        Canvas - Frame {query.isPending ? "*" : query.data.frame_number}
+      </div>
+      <div className="flex justify-center">
         <button
           className="m-1 py-1 px-3 bg-red-600 rounded-md text-white"
           onClick={() => {
-            setBoxes([]);
-            setPoints([]);
+            if (query.isPending) return;
+            const currentFrameNumber = query.data.frame_number;
+            setFrameData((prevFrameData) => ({
+              ...prevFrameData,
+              [currentFrameNumber]: { boxes: [], points: [] },
+            }));
           }}
         >
-          Clear Canvas
+          Clear
         </button>
         <TogglableButtonGroup
           texts={["Draw Boxes", "Draw Positive Points", "Draw Negative Points"]}
@@ -128,28 +182,36 @@ export function Canvas({ selectedVideo }: CanvasProps) {
             )
           }
         />
+      </div>
+      {query.isPending ? (
+        <div
+          className="bg-gray-300 rounded-md"
+          style={{ width: canvasSize.width, height: canvasSize.height }}
+        ></div>
+      ) : (
+        <canvas
+          ref={canvasRef}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        />
+      )}
+      <div className="flex justify-center">
         <button
-          className="m-1 py-1 px-3 bg-blue-600 rounded-md text-white"
-          onClick={prevFrame}
+          className="m-1 py-1 px-3 bg-cyan-700 rounded-md text-white"
+          onClick={handlePrevFrame}
         >
           Prev
         </button>
         <button
-          className="m-1 py-1 px-3 bg-blue-600 rounded-md text-white"
-          onClick={nextFrame}
+          className="m-1 py-1 px-3 bg-cyan-700 rounded-md text-white"
+          onClick={handleNextFrame}
         >
           Next
         </button>
       </div>
-      <canvas
-        ref={canvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        style={{ border: "1px solid black" }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-      />
     </div>
   );
 }

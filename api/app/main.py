@@ -30,7 +30,13 @@ async def upload_video(file: UploadFile = File(...)):
 def get_videos():
     videos = os.listdir("./data")
     videos = [video for video in videos if video.endswith(".mp4")]
-    return {"videos": videos}
+
+    videos_sizes = []
+    for video in videos:
+        video_path = Path(f"./data/{video}")
+        video_size = video_path.stat().st_size
+        videos_sizes.append(video_size)
+    return {"videos": videos, "count": len(videos), "videos_sizes": videos_sizes}
 
 
 @app.get("/videos/{video_name}/frame/{frame_number}")

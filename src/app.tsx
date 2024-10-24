@@ -4,13 +4,10 @@ import { useState } from "react";
 import { UploadVideo } from "./components/uploadVideo";
 import Check from "./icons/check";
 import XMark from "./icons/xMark";
+import { SelectVideo } from "./components/selectVideo";
 
 type AliveResponse = {
   alive: boolean;
-};
-
-type VideoResponse = {
-  videos: string[];
 };
 
 function isAlive(): Promise<AliveResponse> {
@@ -36,10 +33,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="container mx-auto">
-        <h1 className="flex justify-center items-center text-3xl font-bold mb-6 text-center">
-          My App <ApiAlive />
+        <h1 className="flex justify-center items-center text-3xl font-bold mb-4 pb-2 text-center border-b-2 ">
+          Les devs sont mous <ApiAlive />
         </h1>
-        <hr className="mb-6" />
         <div className="mb-6">
           <UploadVideo onUpload={onUpload} />
         </div>
@@ -52,41 +48,6 @@ export default function App() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function SelectVideo({ onSelect }: { onSelect: (video: string) => void }) {
-  const { status, data, error } = useQuery<VideoResponse>({
-    queryKey: ["videos"],
-    queryFn: () =>
-      fetch("/api/videos")
-        .then((res) => res.json())
-        .then((data) => data),
-  });
-
-  if (status === "pending") {
-    return <div>Loading videos...</div>;
-  }
-
-  if (status === "error") {
-    return <div>Error loading videos: {error?.message}</div>;
-  }
-
-  return (
-    <div className="mt-3 p-4 bg-white shadow rounded-lg">
-      <h2 className="text-xl font-semibold mb-4">Select a Video</h2>
-      <ul className="space-y-2">
-        {data.videos.map((video: string) => (
-          <li
-            key={video}
-            onClick={() => onSelect(video)}
-            className="cursor-pointer p-2 hover:bg-gray-100 rounded transition"
-          >
-            {video}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
