@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Annotation } from "../types/canvas";
 
 interface VideoFrame {
   frame_number: number;
   image: string;
+  annotation: Annotation;
 }
+
 export async function fetchVideoFrame(
   video: string,
   frame_number: number,
@@ -19,6 +22,7 @@ export async function fetchVideoFrame(
       throw new Error(res.statusText);
     }
     const data = await res.json();
+    console.log("Data", data);
     return data;
   } catch (error: any) {
     throw new Error(error);

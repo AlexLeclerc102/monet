@@ -23,7 +23,6 @@ def read_root():
 async def upload_video(file: UploadFile = File(...)):
     if not file:
         return {"error": "No file sent"}
-    print(f"Received file: {file.filename}")
     os.makedirs("./data", exist_ok=True)
     file_location = f"./data/{file.filename}"
     with open(file_location, "wb") as f:
@@ -69,7 +68,18 @@ def get_frame(
 
     image_base64 = base64.b64encode(encoded_image).decode("utf-8")
 
-    return {"image": image_base64, "frame_number": frame_number}
+    annotation_file = base_output_dir / video_name / f"{frame_number}.json"
+    if not annotation_file.exists():
+        annotation = None
+    else:
+        with open(annotation_file, "r") as f:
+            json_file = json.load(f)
+            annotation = Annotation.model_validate(json_file)
+    return {
+        "image": image_base64,
+        "frame_number": frame_number,
+        "annotation": annotation,
+    }
 
 
 @app.get("/videos/{video_name}/annotations/{frame_number}")
@@ -97,8 +107,8 @@ class Point(BaseModel):
 
 
 class Annotation(BaseModel):
-    video_name: str
-    frame_number: int
+    videoName: str
+    frameNumber: int
     box: Optional[Box] = None
     positivePoints: list[Point] = []
     negativePoints: list[Point] = []
@@ -112,18 +122,12 @@ async def annotated_frame(
     positivePoints: list[Point] = [],
     negativePoints: list[Point] = [],
 ):
-    print(f"Received annotations for frame {frame_number} of video {video_name}")
-    print(f"Box: {box}")
-    print(f"Positive points: {positivePoints}")
-    print(f"Negative points: {negativePoints}")
-    # save the annotations to a json file
-
     output_dir = base_output_dir / video_name
     output_dir.mkdir(exist_ok=True)
 
     annotation = Annotation(
-        video_name=video_name,
-        frame_number=frame_number,
+        videoName=video_name,
+        frameNumber=frame_number,
         box=box,
         positivePoints=positivePoints,
         negativePoints=negativePoints,
