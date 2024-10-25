@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { TogglableButtonGroup } from "./buttons";
-import { useVideoFrames } from "../hooks/useVideoFrames";
+import { fetchVideoFrame, useVideoFrames } from "../hooks/useVideoFrames";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import axios from "axios";
 
 interface CanvasProps {
   selectedVideo: string;
@@ -18,13 +20,31 @@ interface Box {
 interface Point {
   x: number;
   y: number;
-  color: string;
 }
 
 interface FrameData {
-  boxes: Box[];
-  points: Point[];
+  box: Box | null;
+  positivePoints: Point[];
+  negativePoints: Point[];
 }
+
+interface postAnnotationData {
+  videoName: string;
+  frameNumber: number;
+  data: FrameData;
+}
+
+const postAnnotation = async ({
+  videoName,
+  frameNumber,
+  data,
+}: postAnnotationData) => {
+  await axios
+    .post(`/api/videos/${videoName}/annotations/${frameNumber}`, data)
+    .then((res) => {
+      console.log(res);
+    });
+};
 
 export function Canvas({ selectedVideo }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,6 +61,12 @@ export function Canvas({ selectedVideo }: CanvasProps) {
   );
 
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (info: postAnnotationData) => postAnnotation(info),
+  });
 
   useEffect(() => {
     if (query.data) {
@@ -66,18 +92,27 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       context.lineWidth = 2;
 
       const currentFrameData = frameData[query.data.frame_number] || {
-        boxes: [],
-        points: [],
+        box: null,
+        positivePoints: [],
+        negativePoints: [],
       };
 
-      currentFrameData.boxes.forEach((box) => {
-        context.strokeRect(box.x, box.y, box.width, box.height);
-      });
+      if (currentFrameData.box) {
+        const { x, y, width, height } = currentFrameData.box;
+        context.strokeRect(x, y, width, height);
+      }
 
-      currentFrameData.points.forEach((point) => {
+      currentFrameData.positivePoints.forEach((point) => {
         context.beginPath();
         context.arc(point.x, point.y, 5, 0, 2 * Math.PI);
-        context.fillStyle = point.color;
+        context.fillStyle = "blue";
+        context.fill();
+      });
+
+      currentFrameData.negativePoints.forEach((point) => {
+        context.beginPath();
+        context.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+        context.fillStyle = "red";
         context.fill();
       });
     };
@@ -92,20 +127,26 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       setStartPos(pos);
       setIsDrawing(true);
     } else if (mode === "point_pos" || mode === "point_neg") {
-      const color = mode === "point_pos" ? "blue" : "red";
       const currentFrameNumber = query.data.frame_number;
-      setFrameData((prevFrameData) => {
-        const currentFrameData = prevFrameData[currentFrameNumber] || {
-          boxes: [],
-          points: [],
-        };
-        return {
-          ...prevFrameData,
-          [currentFrameNumber]: {
-            ...currentFrameData,
-            points: [...currentFrameData.points, { ...pos, color }],
-          },
-        };
+      const newFrameData = {
+        ...frameData,
+        [currentFrameNumber]: {
+          ...frameData[currentFrameNumber],
+          positivePoints:
+            mode === "point_pos"
+              ? [...(frameData[currentFrameNumber]?.positivePoints || []), pos]
+              : frameData[currentFrameNumber]?.positivePoints || [],
+          negativePoints:
+            mode === "point_neg"
+              ? [...(frameData[currentFrameNumber]?.negativePoints || []), pos]
+              : frameData[currentFrameNumber]?.negativePoints || [],
+        },
+      };
+      setFrameData(newFrameData);
+      mutation.mutate({
+        videoName: selectedVideo,
+        frameNumber: currentFrameNumber,
+        data: newFrameData[currentFrameNumber],
       });
     }
   };
@@ -122,28 +163,50 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       height: currentPos.y - startPos.y,
     };
     const currentFrameNumber = query.data.frame_number;
-    setFrameData((prevFrameData) => {
-      const currentFrameData = prevFrameData[currentFrameNumber] || {
-        boxes: [],
-        points: [],
-      };
-      return {
-        ...prevFrameData,
-        [currentFrameNumber]: {
-          ...currentFrameData,
-          boxes: [...currentFrameData.boxes.slice(0, -1), newBox],
-        },
-      };
-    });
+    const newFrameData = {
+      ...frameData,
+      [currentFrameNumber]: {
+        ...frameData[currentFrameNumber],
+        box: newBox,
+      },
+    };
+    setFrameData(newFrameData);
   };
 
   const handleMouseUp = () => {
+    if (isDrawing && startPos && mode === "box" && query.data) {
+      const currentFrameNumber = query.data.frame_number;
+      mutation.mutate({
+        videoName: selectedVideo,
+        frameNumber: currentFrameNumber,
+        data: frameData[currentFrameNumber],
+      });
+    }
     setIsDrawing(false);
     setStartPos(null);
   };
 
   const handleNextFrame = () => {
     nextFrame();
+    if (query.data) {
+      setTimeout(() => prefetchNextFrame(query.data.frame_number + 2), 200);
+    }
+  };
+
+  const prefetchNextFrame = (frameNumber?: number) => {
+    if (!query.data) return;
+    const nextFrameNumber = frameNumber ?? query.data.frame_number + 1;
+    queryClient.prefetchQuery({
+      queryKey: ["video_frames", selectedVideo, nextFrameNumber],
+      queryFn: () =>
+        fetchVideoFrame(
+          selectedVideo,
+          nextFrameNumber,
+          canvasSize.height,
+          canvasSize.width
+        ),
+      staleTime: 1000 * 60 * 60,
+    });
   };
 
   const handlePrevFrame = () => {
@@ -165,10 +228,20 @@ export function Canvas({ selectedVideo }: CanvasProps) {
           onClick={() => {
             if (query.isPending) return;
             const currentFrameNumber = query.data.frame_number;
+            const clearedFrameData = {
+              box: null,
+              positivePoints: [],
+              negativePoints: [],
+            };
             setFrameData((prevFrameData) => ({
               ...prevFrameData,
-              [currentFrameNumber]: { boxes: [], points: [] },
+              [currentFrameNumber]: clearedFrameData,
             }));
+            mutation.mutate({
+              videoName: selectedVideo,
+              frameNumber: currentFrameNumber,
+              data: clearedFrameData,
+            });
           }}
         >
           Clear
@@ -208,6 +281,9 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         <button
           className="m-1 py-1 px-3 bg-cyan-700 rounded-md text-white"
           onClick={handleNextFrame}
+          onMouseEnter={() => {
+            prefetchNextFrame();
+          }}
         >
           Next
         </button>

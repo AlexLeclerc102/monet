@@ -1,12 +1,17 @@
 import base64
+import json
 import os
 from pathlib import Path
+from typing import Optional
 
 import cv2
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from video_utils.image import ImageFromVideo
 
 app = FastAPI()
+base_output_dir = Path("./data/annotations")
+base_output_dir.mkdir(exist_ok=True)
 
 
 @app.get("/")
@@ -60,8 +65,72 @@ def get_frame(
     success, encoded_image = cv2.imencode(".webp", frame)
 
     if not success:
-        return {"error": "Error encoding image"}
+        raise HTTPException(status_code=500, detail="Error encoding frame")
 
     image_base64 = base64.b64encode(encoded_image).decode("utf-8")
 
     return {"image": image_base64, "frame_number": frame_number}
+
+
+@app.get("/videos/{video_name}/annotations/{frame_number}")
+async def get_annotations(video_name: str, frame_number: int):
+    annotation_file = base_output_dir / video_name / f"{frame_number}.json"
+    if not annotation_file.exists():
+        raise HTTPException(status_code=404, detail="Annotations not found")
+
+    with open(annotation_file, "r") as f:
+        annotation = json.load(f)
+
+    return annotation
+
+
+class Box(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class Point(BaseModel):
+    x: float
+    y: float
+
+
+class Annotation(BaseModel):
+    video_name: str
+    frame_number: int
+    box: Optional[Box] = None
+    positivePoints: list[Point] = []
+    negativePoints: list[Point] = []
+
+
+@app.post("/videos/{video_name}/annotations/{frame_number}")
+async def annotated_frame(
+    video_name: str,
+    frame_number: int,
+    box: Optional[Box] = None,
+    positivePoints: list[Point] = [],
+    negativePoints: list[Point] = [],
+):
+    print(f"Received annotations for frame {frame_number} of video {video_name}")
+    print(f"Box: {box}")
+    print(f"Positive points: {positivePoints}")
+    print(f"Negative points: {negativePoints}")
+    # save the annotations to a json file
+
+    output_dir = base_output_dir / video_name
+    output_dir.mkdir(exist_ok=True)
+
+    annotation = Annotation(
+        video_name=video_name,
+        frame_number=frame_number,
+        box=box,
+        positivePoints=positivePoints,
+        negativePoints=negativePoints,
+    )
+
+    annotation_file = output_dir / f"{frame_number}.json"
+    with open(annotation_file, "w") as f:
+        json.dump(annotation.model_dump(), f, indent=4)
+
+    return {"info": f"Annotations for frame {frame_number} saved."}

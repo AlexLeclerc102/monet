@@ -5,7 +5,7 @@ interface VideoFrame {
   frame_number: number;
   image: string;
 }
-async function fetchVideoFrame(
+export async function fetchVideoFrame(
   video: string,
   frame_number: number,
   height: number,
@@ -43,6 +43,7 @@ export function useVideoFrames(
   const query = useQuery<VideoFrame>({
     queryKey: ["video_frames", video, frame_number],
     queryFn: () => fetchVideoFrame(video, frame_number, height, width),
+    staleTime: 1000 * 60 * 60,
   });
 
   return { query, nextFrame, prevFrame };
