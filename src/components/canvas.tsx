@@ -33,6 +33,10 @@ export function Canvas({ selectedVideo }: CanvasProps) {
   );
 
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [backgroundSegmentedImage, setBackgroundSegmentedImage] = useState<
+    string | null
+  >(null);
+  const [useSegmentedImage, setUseSegmentedImage] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -43,6 +47,8 @@ export function Canvas({ selectedVideo }: CanvasProps) {
   useEffect(() => {
     if (query.data) {
       setBackgroundImage(query.data.image);
+      console.log("Segmented Image", query.data.segmented_image);
+      setBackgroundSegmentedImage(query.data.segmented_image);
       setFrameData((prevFrameData) => ({
         ...prevFrameData,
         [query.data.frame_number]: query.data.annotation,
@@ -60,7 +66,12 @@ export function Canvas({ selectedVideo }: CanvasProps) {
 
     if (!backgroundImage || !query.data) return;
 
-    image.src = "data:image/jpeg;base64," + backgroundImage;
+    if (useSegmentedImage && backgroundSegmentedImage) {
+      image.src = "data:image/jpeg;base64," + backgroundSegmentedImage;
+    } else {
+      image.src = "data:image/jpeg;base64," + backgroundImage;
+    }
+
     image.onload = () => {
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
@@ -214,7 +225,7 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       <div className="text-2xl font-bold ">
         Canvas - Frame {query.isPending ? "*" : query.data.frame_number}
       </div>
-      <div className="flex justify-center">
+      <div className="flex justify-center pb-2">
         <button
           className="m-1 py-1 px-3 bg-red-600 rounded-md text-white"
           onClick={handleClear}
@@ -230,6 +241,21 @@ export function Canvas({ selectedVideo }: CanvasProps) {
             )
           }
         />
+        <button
+          className="m-1 py-1 px-3 bg-violet-700 rounded-md text-white"
+          onClick={() => {
+            setUseSegmentedImage((prev) => !prev);
+          }}
+        >
+          {useSegmentedImage ? "Use Original Image" : "Use Segmented Image"}
+        </button>
+        {useSegmentedImage && !backgroundSegmentedImage ? (
+          <div className="m-1 font-bold border-2 border-solid p-1 shadow-md rounded-md">
+            No Segmented Image
+          </div>
+        ) : (
+          ""
+        )}
       </div>
       {query.isPending ? (
         <div

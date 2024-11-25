@@ -2,11 +2,13 @@
 name = "app"
 version = "0.1.0"
 description = "Backend for monet"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.3",
+    "huggingface-hub>=0.26.2",
     "opencv-python>=4.10.0.84",
     "python-multipart>=0.0.12",
+    "sam2>=0.4.1",
     "video-utils",
 ]
 

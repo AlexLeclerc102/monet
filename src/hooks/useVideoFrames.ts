@@ -5,6 +5,7 @@ import { Annotation } from "../types/canvas";
 interface VideoFrame {
   frame_number: number;
   image: string;
+  segmented_image: string | null;
   annotation: Annotation;
 }
 
