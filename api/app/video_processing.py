@@ -19,32 +19,9 @@ def get_size_video(path) -> tuple:
     return width, height
 
 
-def check_extracted_frames(
-    video_path: Path, output_dir: Path, start_frame: int, end_frame: int
-):
-    print(
-        f"Checking extracted frames for {video_path} in {output_dir} from {start_frame} to {end_frame}"
-    )
-    for frame_number in range(start_frame, end_frame):
-        print(f"Checking frame {frame_number} in {output_dir}")
-        print(
-            (output_dir / f"{frame_number}.jpg"),
-            (output_dir / f"{frame_number}.jpg").exists(),
-        )
-        if not (output_dir / f"{frame_number}.jpg").exists():
-            return False
-
-    return True
-
-
 def extract_frames(
     video_path: Path, output_dir: Path, start_frame: int, end_frame: int
 ):
-    if check_extracted_frames(video_path, output_dir, start_frame, end_frame):
-        print("Frames already extracted")
-        width, height = get_size_video(video_path)
-        return end_frame - start_frame, width, height
-
     video_capture = cv2.VideoCapture(str(video_path))
     video_capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -53,7 +30,7 @@ def extract_frames(
     while True:
         success, frame = video_capture.read()
         if not success:
-            break
+            raise ValueError("Failed to read frame")
         if end_frame > 0 and frame_number >= end_frame:
             break
         cv2.imwrite(str(output_dir / f"{frame_number}.jpg"), frame)
@@ -61,6 +38,15 @@ def extract_frames(
     video_capture.release()
 
     return frame_number - start_frame, width, height
+
+
+def clear_directory(directory: Path):
+    if directory.exists() and directory.is_dir():
+        for file in directory.iterdir():
+            file.unlink()
+        directory.rmdir()
+
+    directory.mkdir(parents=True, exist_ok=True)
 
 
 def process_segmentation(
@@ -84,17 +70,21 @@ def process_segmentation(
         annotation = json.load(f)
         annotation = Annotation.model_validate(annotation)
 
-    seg_output_dir = settings.mask_directory / video_name.replace(".mp4", "")
-    seg_output_dir.mkdir(exist_ok=True, parents=True)
+    mask_output_directory = settings.mask_directory / video_name.replace(".mp4", "")
+    clear_directory(mask_output_directory)
 
     image_output_dir = settings.image_directory / video_name.replace(".mp4", "")
-    image_output_dir.mkdir(exist_ok=True, parents=True)
+    clear_directory(image_output_dir)
 
     n_frames, width, height = extract_frames(
         video_path, image_output_dir, start_frame, end_frame
     )
-
-    state = sam2_predictor.init_state(str(image_output_dir))
+    try:
+        state = sam2_predictor.init_state(str(image_output_dir))
+    except Exception as e:
+        print(f"Error while initializing state: {e}")
+        task_queue.pop((video_name, frame_number))
+        return
 
     points = np.array(
         [
@@ -127,7 +117,7 @@ def process_segmentation(
     for frame_idx, masks in video_segments.items():
         for obj_id, mask in masks.items():
             frame_n = start_frame + frame_idx
-            mask_path = seg_output_dir / f"{frame_n}.jpg"
+            mask_path = mask_output_directory / f"{frame_n}.jpg"
             mask = mask.astype(np.uint8) * 255
             mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(mask_path), mask)

@@ -17,14 +17,14 @@ const SegModal: React.FC<SegModalProps> = ({ selectedVideo, frame_number }) => {
   const queryClient = useQueryClient();
 
   const handleSegmentation = async () => {
-    if (frame_number && startFrame !== null && endFrame !== null) {
+    if (startFrame !== null && endFrame !== null) {
       await axios.post(`/api/videos/${selectedVideo}/sam/${frame_number}`, {
         start_frame: startFrame,
         end_frame: endFrame,
       });
       setIsModalOpen(false);
       queryClient.invalidateQueries({
-        queryKey: ["video_frames", selectedVideo],
+        queryKey: ["video_frames", selectedVideo, frame_number],
       });
     }
   };

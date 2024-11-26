@@ -52,7 +52,7 @@ export function useVideoFrames(
   const query = useQuery<VideoFrame>({
     queryKey: ["video_frames", video, frame_number],
     queryFn: () => fetchVideoFrame(video, frame_number, height, width),
-    staleTime: 1000 * 60 * 60,
+    staleTime: 5,
   });
 
   return { query, nextFrame, prevFrame, setFrame };
