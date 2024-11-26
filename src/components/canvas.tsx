@@ -4,6 +4,8 @@ import { fetchVideoFrame, useVideoFrames } from "../hooks/useVideoFrames";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import { Annotation } from "../types/canvas";
+import SegModal from "./segModal";
+import ChangeFrameModal from "./frameModal";
 
 interface CanvasProps {
   selectedVideo: string;
@@ -23,10 +25,11 @@ export function Canvas({ selectedVideo }: CanvasProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mode, setMode] = useState<"box" | "point_pos" | "point_neg">("box");
   const [frameData, setFrameData] = useState<Record<number, Annotation>>({});
-  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
-    null
-  );
-  const { query, nextFrame, prevFrame } = useVideoFrames(
+  const [startPos, setStartPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const { query, nextFrame, prevFrame, setFrame } = useVideoFrames(
     selectedVideo,
     canvasSize.height,
     canvasSize.width
@@ -47,7 +50,6 @@ export function Canvas({ selectedVideo }: CanvasProps) {
   useEffect(() => {
     if (query.data) {
       setBackgroundImage(query.data.image);
-      console.log("Segmented Image", query.data.segmented_image);
       setBackgroundSegmentedImage(query.data.segmented_image);
       setFrameData((prevFrameData) => ({
         ...prevFrameData,
@@ -73,6 +75,7 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     }
 
     image.onload = () => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
       context.strokeStyle = "red";
@@ -85,30 +88,50 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       };
 
       if (currentFrameData.box) {
-        const { x, y, width, height } = currentFrameData.box;
-        context.strokeRect(x, y, width, height);
+        const { x: x, y: y, width, height } = currentFrameData.box;
+        context.strokeRect(
+          x * canvas.width,
+          y * canvas.height,
+          width * canvas.width,
+          height * canvas.height
+        );
       }
 
       currentFrameData.positivePoints.forEach((point) => {
         context.beginPath();
-        context.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+        context.arc(
+          point.x * canvas.width,
+          point.y * canvas.height,
+          5,
+          0,
+          2 * Math.PI
+        );
         context.fillStyle = "blue";
         context.fill();
       });
 
       currentFrameData.negativePoints.forEach((point) => {
         context.beginPath();
-        context.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+        context.arc(
+          point.x * canvas.width,
+          point.y * canvas.height,
+          5,
+          0,
+          2 * Math.PI
+        );
         context.fillStyle = "red";
         context.fill();
       });
     };
-  }, [backgroundImage, frameData, query.data?.frame_number]);
+  }, [backgroundImage, frameData, query.data?.frame_number, useSegmentedImage]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || !query.data) return;
-    const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const pos = {
+      x: (e.clientX - rect.left) / canvasSize.width,
+      y: (e.clientY - rect.top) / canvasSize.height,
+    };
 
     if (mode === "box") {
       setStartPos(pos);
@@ -143,7 +166,10 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     if (!isDrawing || !startPos || mode !== "box" || !query.data) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const currentPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const currentPos = {
+      x: (e.clientX - rect.left) / canvasSize.width,
+      y: (e.clientY - rect.top) / canvasSize.height,
+    };
     const newBox = {
       x: startPos.x,
       y: startPos.y,
@@ -167,6 +193,9 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     if (isDrawing && startPos && mode === "box" && query.data) {
       const currentFrameNumber = query.data.frame_number;
       mutation.mutate(frameData[currentFrameNumber]);
+      queryClient.invalidateQueries({
+        queryKey: ["video_frames", selectedVideo, currentFrameNumber],
+      });
     }
     setIsDrawing(false);
     setStartPos(null);
@@ -214,6 +243,9 @@ export function Canvas({ selectedVideo }: CanvasProps) {
       [currentFrameNumber]: clearedFrameData,
     }));
     mutation.mutate(clearedFrameData);
+    queryClient.invalidateQueries({
+      queryKey: ["video_frames", selectedVideo, currentFrameNumber],
+    });
   };
 
   if (query.isError) {
@@ -222,8 +254,16 @@ export function Canvas({ selectedVideo }: CanvasProps) {
 
   return (
     <div className="inline-block p-4 bg-white shadow rounded-lg">
-      <div className="text-2xl font-bold ">
+      <div className="text-2xl font-bold flex items-center">
         Canvas - Frame {query.isPending ? "*" : query.data.frame_number}
+        {query.isPending ? (
+          ""
+        ) : (
+          <ChangeFrameModal
+            frame_number={query.data.frame_number}
+            setFrame={setFrame}
+          />
+        )}
       </div>
       <div className="flex justify-center pb-2">
         <button
@@ -279,6 +319,14 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         >
           Prev
         </button>
+        {query && query.data ? (
+          <SegModal
+            selectedVideo={selectedVideo}
+            frame_number={query.data.frame_number}
+          />
+        ) : (
+          ""
+        )}
         <button
           className="m-1 py-1 px-3 bg-cyan-700 rounded-md text-white"
           onClick={handleNextFrame}

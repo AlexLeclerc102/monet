@@ -45,11 +45,15 @@ export function useVideoFrames(
     setFrameNumber((prev) => prev - 1);
   };
 
+  const setFrame = (frame: number) => {
+    setFrameNumber(frame);
+  };
+
   const query = useQuery<VideoFrame>({
     queryKey: ["video_frames", video, frame_number],
     queryFn: () => fetchVideoFrame(video, frame_number, height, width),
     staleTime: 1000 * 60 * 60,
   });
 
-  return { query, nextFrame, prevFrame };
+  return { query, nextFrame, prevFrame, setFrame };
 }
