@@ -17,7 +17,7 @@ from app.video_processing import process_segmentation
 router = APIRouter(prefix="/videos")
 
 
-@router.get("/")
+@router.get("")
 def get_videos():
     videos = os.listdir("./data")
     videos = [video for video in videos if video.endswith(".mp4")]
