@@ -11,8 +11,6 @@ interface CanvasProps {
   selectedVideo: string;
 }
 
-const canvasSize = { width: 800, height: 600 };
-
 const postAnnotation = async (annotation: Annotation) => {
   await axios.post(
     `/api/videos/${annotation.videoName}/annotations/${annotation.frameNumber}`,
@@ -29,10 +27,18 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     x: number;
     y: number;
   } | null>(null);
+  const maxCanvasSize = {
+    width: Math.round(window.innerWidth * 0.8),
+    height: Math.round(window.innerHeight * 0.8),
+  };
+  const [canvasSize, setCanvasSize] = useState({
+    width: 0,
+    height: 0,
+  });
   const { query, nextFrame, prevFrame, setFrame } = useVideoFrames(
     selectedVideo,
-    canvasSize.height,
-    canvasSize.width
+    maxCanvasSize.height,
+    maxCanvasSize.width
   );
 
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
@@ -55,6 +61,12 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         ...prevFrameData,
         [query.data.frame_number]: query.data.annotation,
       }));
+
+      const { width, height } = query.data;
+      setCanvasSize({
+        width: width,
+        height: height,
+      });
     }
   }, [query.data]);
 
@@ -123,7 +135,13 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         context.fill();
       });
     };
-  }, [backgroundImage, frameData, query.data?.frame_number, useSegmentedImage]);
+  }, [
+    backgroundImage,
+    frameData,
+    query.data?.frame_number,
+    useSegmentedImage,
+    canvasSize,
+  ]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();

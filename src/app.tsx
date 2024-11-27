@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Canvas } from "./components/canvas";
 import { useState } from "react";
-import { UploadVideo } from "./components/uploadVideo";
+import { Upload } from "./components/upload";
 import { SelectVideo } from "./components/selectVideo";
 import { ApiAlive } from "./components/apiAlive";
 
@@ -21,7 +21,7 @@ export default function App() {
           Les devs sont mous <ApiAlive />
         </h1>
         <div className="mb-6">
-          <UploadVideo onUpload={onUpload} />
+          <Upload onUpload={onUpload} />
         </div>
         <div className="mb-6">
           <SelectVideo onSelect={setSelectedVideo} />

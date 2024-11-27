@@ -34,9 +34,11 @@ def get_videos():
 def get_frame(
     video_name: str,
     frame_number: int,
-    height: int = 480,
-    width: int = 640,
+    max_height: int = 480,
+    max_width: int = 640,
 ):
+    print(f"Getting frame {frame_number} from video {video_name}")
+    print(f"Max height: {max_height}, Max width: {max_width}")
     video_path = Path(f"./data/{video_name}")
     if not video_path.exists():
         return {"error": "Video not found"}
@@ -46,6 +48,19 @@ def get_frame(
 
     if frame is None:
         return {"error": "Frame not found"}
+
+    current_height, current_width = frame.shape[:2]
+    if current_height > max_height or current_width > max_width:
+        if current_height > current_width:
+            ratio = max_height / current_height
+        else:
+            ratio = max_width / current_width
+
+        width = int(current_width * ratio)
+        height = int(current_height * ratio)
+    else:
+        width = current_width
+        height = current_height
 
     frame = cv2.resize(frame, (width, height))
     success, encoded_image = cv2.imencode(".webp", frame)
@@ -71,11 +86,12 @@ def get_frame(
         settings.mask_directory / video_name.replace(".mp4", "") / f"{frame_number}.jpg"
     )
     if mask_file.exists():
-        print(f"Segmented image found: {mask_file}")
         try:
             mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
             _, mask = cv2.threshold(mask, 8, 255, cv2.THRESH_BINARY)
-            mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+            mask = cv2.resize(
+                mask, (max_width, max_height), interpolation=cv2.INTER_NEAREST
+            )
             overlay = frame.copy()
             overlay[mask > 0] = (255, 0, 0)
             segmented_image = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
@@ -101,7 +117,6 @@ def get_frame(
             print(f"Error reading mask: {e}")
             segmented_image_base64 = None
     else:
-        print(f"Segmented image not found: {mask_file}")
         segmented_image_base64 = None
 
     return {
@@ -109,6 +124,8 @@ def get_frame(
         "segmented_image": segmented_image_base64,
         "frame_number": frame_number,
         "annotation": annotation,
+        "width": width,
+        "height": height,
     }
 
 
