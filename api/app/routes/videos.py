@@ -1,123 +1,84 @@
-import base64
 import json
-import os
 from pathlib import Path
 from typing import Annotated, Any, DefaultDict, Optional
 
 import cv2
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sam2.sam2_video_predictor import SAM2VideoPredictor
-from video_utils.image import ImageFromVideo
 
 from app.config import settings
 from app.dependencies import get_sam2_predictor, get_task_queue
 from app.models import Annotation, Box, FrameRange, Point
-from app.video_processing import process_segmentation
+from app.video_processing import (
+    apply_image_mask,
+    calculate_resized_size,
+    encode_image,
+    get_annotation,
+    get_videos_sizes,
+    process_segmentation,
+    read_frame,
+    retrieve_video_files,
+)
 
 router = APIRouter(prefix="/videos")
 
 
 @router.get("")
 def get_videos():
-    videos = os.listdir("./data")
-    videos = [video for video in videos if video.endswith(".mp4")]
+    videos, images_videos = retrieve_video_files()
+    videos_sizes, invalid_images_videos = get_videos_sizes(videos, images_videos)
 
-    videos_sizes = []
-    for video in videos:
-        video_path = Path(f"./data/{video}")
-        video_size = video_path.stat().st_size
-        videos_sizes.append(video_size)
+    if len(invalid_images_videos) > 0:
+        print(f"Invalid images videos: {invalid_images_videos}")
+        for invalid_image_video in invalid_images_videos:
+            images_videos.remove(invalid_image_video)
+
+    videos.extend(images_videos)
     return {"videos": videos, "count": len(videos), "videos_sizes": videos_sizes}
 
 
-@router.get("/{video_name}/frame/{frame_number}")
+@router.get("/{video_file}/frame/{frame_number}")
 def get_frame(
-    video_name: str,
+    video_file: str,
     frame_number: int,
     max_height: int = 480,
     max_width: int = 640,
 ):
-    print(f"Getting frame {frame_number} from video {video_name}")
-    print(f"Max height: {max_height}, Max width: {max_width}")
-    video_path = Path(f"./data/{video_name}")
-    if not video_path.exists():
-        return {"error": "Video not found"}
-
-    imageFromVideo = ImageFromVideo(path=video_path, image_index=frame_number)
-    frame = imageFromVideo.read_image()
-
+    frame, video_name = read_frame(video_file, frame_number)
+    if video_name is None:
+        return HTTPException(status_code=404, detail="Video not found")
     if frame is None:
-        return {"error": "Frame not found"}
+        return HTTPException(status_code=404, detail="Frame not found")
+
+    annotation = get_annotation(video_name, frame_number)
 
     current_height, current_width = frame.shape[:2]
-    if current_height > max_height or current_width > max_width:
-        if current_height > current_width:
-            ratio = max_height / current_height
-        else:
-            ratio = max_width / current_width
-
-        width = int(current_width * ratio)
-        height = int(current_height * ratio)
-    else:
-        width = current_width
-        height = current_height
+    width, height = calculate_resized_size(
+        current_height, current_width, max_height, max_width
+    )
 
     frame = cv2.resize(frame, (width, height))
-    success, encoded_image = cv2.imencode(".webp", frame)
+    try:
+        image_base64 = encode_image(frame)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error encoding image: {e}") from e
 
-    if not success:
-        raise HTTPException(status_code=500, detail="Error encoding frame")
-
-    image_base64 = base64.b64encode(encoded_image).decode("utf-8")
-
-    annotation_file = (
-        settings.annotation_directory
-        / video_name.replace(".mp4", "")
-        / f"{frame_number}.json"
-    )
-    if not annotation_file.exists():
-        annotation = None
-    else:
-        with open(annotation_file, "r") as f:
-            json_file = json.load(f)
-            annotation = Annotation.model_validate(json_file)
-
-    mask_file = (
-        settings.mask_directory / video_name.replace(".mp4", "") / f"{frame_number}.jpg"
-    )
-    if mask_file.exists():
-        try:
-            mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
-            _, mask = cv2.threshold(mask, 8, 255, cv2.THRESH_BINARY)
-            mask = cv2.resize(
-                mask, (max_width, max_height), interpolation=cv2.INTER_NEAREST
-            )
-            overlay = frame.copy()
-            overlay[mask > 0] = (255, 0, 0)
-            segmented_image = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
-
-            (settings.segmented_images_directory / video_name).mkdir(
-                exist_ok=True, parents=True
-            )
-            cv2.imwrite(
-                str(
-                    settings.segmented_images_directory
-                    / video_name
-                    / f"{frame_number}.jpg"
-                ),
-                segmented_image,
-            )
-            success, segmented_image = cv2.imencode(
-                ".webp",
-                segmented_image,
-            )
-
-            segmented_image_base64 = base64.b64encode(segmented_image).decode("utf-8")
-        except Exception as e:
-            print(f"Error reading mask: {e}")
+    mask_file = settings.mask_directory / video_name / f"{frame_number}.jpg"
+    try:
+        segmented_img = apply_image_mask(
+            mask_file,
+            frame,
+            width,
+            height,
+            save_name=video_name / f"{frame_number}.jpg",
+            save=True,
+        )
+        if segmented_img is not None:
+            segmented_image_base64 = encode_image(segmented_img)
+        else:
             segmented_image_base64 = None
-    else:
-        segmented_image_base64 = None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error encoding image: {e}") from e
 
     return {
         "image": image_base64,

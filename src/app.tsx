@@ -18,7 +18,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="container mx-auto">
         <h1 className="flex justify-center items-center text-3xl font-bold mb-4 pb-2 text-center border-b-2 ">
-          Les devs sont mous <ApiAlive />
+          SAM Demo <ApiAlive />
         </h1>
         <div className="mb-6">
           <Upload onUpload={onUpload} />

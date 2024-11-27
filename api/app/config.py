@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     annotation_directory: Path = Path("./data/annotations")
     sam2_model_name: str = "facebook/sam2-hiera-large"
 
-    video_path: Path = Path("./data/videos")
-    images_path: Path = Path("./data/images")
+    video_dir: Path = Path("./data/videos")
+    images_dir: Path = Path("./data/images")
 
     @model_validator(mode="after")
     def validate_directories(self):
@@ -21,8 +21,8 @@ class Settings(BaseSettings):
             self.mask_directory,
             self.segmented_images_directory,
             self.annotation_directory,
-            self.video_path,
-            self.images_path,
+            self.video_dir,
+            self.images_dir,
         ]:
             if not directory.exists():
                 directory.mkdir(exist_ok=True, parents=True)

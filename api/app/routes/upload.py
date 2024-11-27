@@ -23,9 +23,9 @@ async def upload_files(
 
     if video:
         if videoName is not None:
-            video_location = settings.video_path / videoName
+            video_location = settings.video_dir / videoName
         elif videoName is None and video.filename is not None:
-            video_location = settings.video_path / video.filename
+            video_location = settings.video_dir / video.filename
         else:
             raise HTTPException(status_code=400, detail="Video name must be provided")
 
@@ -38,7 +38,7 @@ async def upload_files(
                 status_code=400, detail="Video name must be provided for images"
             )
 
-        image_dir = settings.images_path / videoName
+        image_dir = settings.images_dir / videoName
         image_dir.mkdir(exist_ok=True, parents=True)
 
         for image in images:
