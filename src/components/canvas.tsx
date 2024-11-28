@@ -53,6 +53,19 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     mutationFn: (info: Annotation) => postAnnotation(info),
   });
 
+  // reset frame data when video changes
+  useEffect(() => {
+    setFrameData({});
+    setCanvasSize({
+      width: 0,
+      height: 0,
+    });
+    setBackgroundImage(null);
+    setBackgroundSegmentedImage(null);
+    setUseSegmentedImage(false);
+    setFrame(0);
+  }, [selectedVideo]);
+
   useEffect(() => {
     if (query.data) {
       setBackgroundImage(query.data.image);
@@ -235,8 +248,8 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         fetchVideoFrame(
           selectedVideo,
           nextFrameNumber,
-          canvasSize.height,
-          canvasSize.width
+          maxCanvasSize.height,
+          maxCanvasSize.width
         ),
       staleTime: 1000 * 60 * 60,
     });

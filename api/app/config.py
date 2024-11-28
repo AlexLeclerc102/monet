@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     video_dir: Path = Path("./data/videos")
     images_dir: Path = Path("./data/images")
+    input_dir: Path = Path("./data/input")
 
     @model_validator(mode="after")
     def validate_directories(self):
@@ -23,6 +24,7 @@ class Settings(BaseSettings):
             self.annotation_directory,
             self.video_dir,
             self.images_dir,
+            self.input_dir,
         ]:
             if not directory.exists():
                 directory.mkdir(exist_ok=True, parents=True)

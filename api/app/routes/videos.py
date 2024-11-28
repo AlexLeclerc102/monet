@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Annotated, Any, DefaultDict, Optional
 
 import cv2
@@ -92,18 +91,9 @@ def get_frame(
 
 @router.get("/{video_name}/annotations/{frame_number}", response_model=Annotation)
 async def get_annotations(video_name: str, frame_number: int):
-    annotation_file = (
-        settings.annotation_directory
-        / video_name.replace(".mp4", "")
-        / f"{frame_number}.json"
-    )
-    if not annotation_file.exists():
-        raise HTTPException(status_code=404, detail="Annotations not found")
-
-    with open(annotation_file, "r") as f:
-        annotation = json.load(f)
-        annotation = Annotation.model_validate(annotation)
-
+    annotation = get_annotation(video_name.replace(".mp4", ""), frame_number)
+    if annotation is None:
+        raise HTTPException(status_code=404, detail="Annotation not found")
     return annotation
 
 
@@ -123,8 +113,8 @@ async def annotate_frame(
     output_dir = settings.annotation_directory / video_name.replace(".mp4", "")
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    video_path = Path(f"./data/{video_name}")
-    if not video_path.exists():
+    videos, images_videos = retrieve_video_files()
+    if video_name not in images_videos and video_name not in videos:
         raise HTTPException(status_code=404, detail="Video not found")
 
     annotation = Annotation(
@@ -171,9 +161,9 @@ async def segment_and_mask(
             status_code=400, detail="end_frame should be greater than 0"
         )
 
-    video_path = Path(f"./data/{video_name}")
-    if not video_path.exists():
-        raise HTTPException(status_code=404, detail="Video not found")
+    videos, images_videos = retrieve_video_files()
+    if video_name not in images_videos and video_name not in videos:
+        raise HTTPException(status_code=400, detail="Video not found")
 
     if (video_name, frame_number) in task_queue:
         raise HTTPException(status_code=400, detail="Task already in queue")

@@ -9,10 +9,13 @@ router = APIRouter(prefix="/upload")
 
 @router.post("")
 async def upload_files(
-    images: list[UploadFile],
     videoName: Annotated[str | None, Form()],
+    images: Optional[list[UploadFile]] = None,
     video: Optional[UploadFile] = None,
 ):
+    if videoName == "":
+        videoName = None
+
     if not video and not images:
         raise HTTPException(status_code=400, detail="No files provided")
     if video and images:
@@ -24,8 +27,10 @@ async def upload_files(
     if video:
         if videoName is not None:
             video_location = settings.video_dir / videoName
+            print(video_location, video.filename, videoName)
         elif videoName is None and video.filename is not None:
             video_location = settings.video_dir / video.filename
+            print(video_location, video.filename, videoName)
         else:
             raise HTTPException(status_code=400, detail="Video name must be provided")
 

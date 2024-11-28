@@ -13,6 +13,11 @@ from app.models import Annotation
 
 
 def get_size_video(path) -> tuple:
+    if path.is_dir():
+        images = list(path.glob("*.jpg")) + list(path.glob("*.png"))
+        height, width = cv2.imread(str(images[0])).shape[:2]
+        return width, height
+
     cap = cv2.VideoCapture(str(path))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -50,82 +55,6 @@ def clear_directory(directory: Path):
     directory.mkdir(parents=True, exist_ok=True)
 
 
-def process_segmentation(
-    video_name: str,
-    frame_number: int,
-    start_frame: int,
-    end_frame: int,
-    sam2_predictor: SAM2VideoPredictor,
-    task_queue: DefaultDict[Any, list],
-):
-    video_path = Path(f"./data/{video_name}")
-    imageFromVideo = ImageFromVideo(path=video_path, image_index=frame_number)
-    _ = imageFromVideo.read_image()
-
-    annotation_file = (
-        settings.annotation_directory
-        / video_name.replace(".mp4", "")
-        / f"{frame_number}.json"
-    )
-    with open(annotation_file, "r") as f:
-        annotation = json.load(f)
-        annotation = Annotation.model_validate(annotation)
-
-    mask_output_directory = settings.mask_directory / video_name.replace(".mp4", "")
-    clear_directory(mask_output_directory)
-
-    image_output_dir = settings.image_directory / video_name.replace(".mp4", "")
-    clear_directory(image_output_dir)
-
-    n_frames, width, height = extract_frames(
-        video_path, image_output_dir, start_frame, end_frame
-    )
-    try:
-        state = sam2_predictor.init_state(str(image_output_dir))
-    except Exception as e:
-        print(f"Error while initializing state: {e}")
-        task_queue.pop((video_name, frame_number))
-        return
-
-    points = np.array(
-        [
-            [point.x * width, point.y * height]
-            for point in annotation.positivePoints + annotation.negativePoints
-        ],
-        dtype=np.float32,
-    )
-    labels = np.array(
-        [1] * len(annotation.positivePoints) + [0] * len(annotation.negativePoints),
-        dtype=np.int32,
-    )
-
-    frame_idx = frame_number - start_frame
-    frame_idx, object_ids, masks = sam2_predictor.add_new_points_or_box(
-        inference_state=state,
-        frame_idx=frame_idx,
-        obj_id=0,
-        points=points,
-        labels=labels,
-    )
-
-    video_segments = {}
-    for frame_idx, object_ids, masks in sam2_predictor.propagate_in_video(state):
-        video_segments[frame_idx] = {
-            out_obj_id: (masks[i] > 0.0).cpu().permute(1, 2, 0).numpy()
-            for i, out_obj_id in enumerate(object_ids)
-        }
-
-    for frame_idx, masks in video_segments.items():
-        for obj_id, mask in masks.items():
-            frame_n = start_frame + frame_idx
-            mask_path = mask_output_directory / f"{frame_n}.jpg"
-            mask = mask.astype(np.uint8) * 255
-            mask_path.parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(mask_path), mask)
-
-    task_queue.pop((video_name, frame_number))
-
-
 def retrieve_video_files():
     videos = settings.video_dir.glob("*.mp4")
     videos = [video.name for video in videos]
@@ -138,7 +67,7 @@ def retrieve_video_files():
 def get_videos_sizes(videos: list[str], images_videos: list[str]):
     videos_sizes = []
     for video in videos:
-        video_path = Path(f"./data/{video}")
+        video_path = settings.video_dir / video
         video_size = video_path.stat().st_size
         videos_sizes.append(video_size)
 
@@ -218,7 +147,7 @@ def read_frame(video_file: str, frame_number: int):
     return frame, video_name
 
 
-def get_annotation(video_name: Path, frame_number: int):
+def get_annotation(video_name: Path | str, frame_number: int):
     annotation_file = (
         settings.annotation_directory / video_name / f"{frame_number}.json"
     )
@@ -250,7 +179,7 @@ def apply_image_mask(
         segmented_image = cv2.addWeighted(overlay, 1 - weight, frame, weight, 0)
 
         if save:
-            (settings.segmented_images_directory / save_name).mkdir(
+            (settings.segmented_images_directory / save_name.parent).mkdir(
                 exist_ok=True, parents=True
             )
             cv2.imwrite(
@@ -269,3 +198,108 @@ def encode_image(image: np.ndarray):
         raise Exception("Error encoding image")
 
     return base64.b64encode(encoded_image).decode("utf-8")
+
+
+def copy_images_to_input(video_name: str, start_frame: int = 0, end_frame: int = 0):
+    images_dir = settings.images_dir / video_name
+    input_dir = settings.input_dir / video_name
+    clear_directory(input_dir)
+
+    images = sorted(list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png")))
+
+    for image in images[start_frame:end_frame]:
+        image_name = image.name
+        image_name = image_name.replace(".png", ".jpg")
+        image_path = input_dir / image_name
+
+        frame = cv2.imread(str(image))
+        cv2.imwrite(str(image_path), frame)
+
+
+def process_segmentation(
+    video_file: str,
+    frame_number: int,
+    start_frame: int,
+    end_frame: int,
+    sam2_predictor: SAM2VideoPredictor,
+    task_queue: DefaultDict[Any, list],
+):
+    videos, images_videos = retrieve_video_files()
+    is_video = False
+    if video_file in videos:
+        video_path = settings.video_dir / video_file
+        video_name = video_file.replace(".mp4", "")
+        is_video = True
+    elif video_file in images_videos:
+        video_name = video_file
+        video_path = settings.images_dir / video_name
+    else:
+        print(f"Video {video_file} not found")
+        task_queue.pop((video_file, frame_number))
+        return
+
+    annotation_file = (
+        settings.annotation_directory / video_name / f"{frame_number}.json"
+    )
+    with open(annotation_file, "r") as f:
+        annotation = json.load(f)
+        annotation = Annotation.model_validate(annotation)
+
+    mask_output_directory = settings.mask_directory / video_name
+    clear_directory(mask_output_directory)
+
+    image_output_dir = settings.input_dir / video_name
+    clear_directory(image_output_dir)
+
+    if is_video:
+        n_frames, width, height = extract_frames(
+            video_path, image_output_dir, start_frame, end_frame
+        )
+    else:
+        width, height = get_size_video(video_path)
+        copy_images_to_input(video_name, start_frame, end_frame)
+
+    try:
+        state = sam2_predictor.init_state(str(image_output_dir))
+    except Exception as e:
+        print(f"Error while initializing state: {e}")
+        task_queue.pop((video_file, frame_number))
+        return
+
+    points = np.array(
+        [
+            [point.x * width, point.y * height]
+            for point in annotation.positivePoints + annotation.negativePoints
+        ],
+        dtype=np.float32,
+    )
+    labels = np.array(
+        [1] * len(annotation.positivePoints) + [0] * len(annotation.negativePoints),
+        dtype=np.int32,
+    )
+
+    frame_idx = frame_number - start_frame
+    frame_idx, object_ids, masks = sam2_predictor.add_new_points_or_box(
+        inference_state=state,
+        frame_idx=frame_idx,
+        obj_id=0,
+        points=points,
+        labels=labels,
+    )
+
+    video_segments = {}
+    for frame_idx, object_ids, masks in sam2_predictor.propagate_in_video(state):
+        video_segments[frame_idx] = {
+            out_obj_id: (masks[i] > 0.0).cpu().permute(1, 2, 0).numpy()
+            for i, out_obj_id in enumerate(object_ids)
+        }
+
+    for frame_idx, masks in video_segments.items():
+        for obj_id, mask in masks.items():
+            frame_n = start_frame + frame_idx
+            mask_path = mask_output_directory / f"{frame_n}.jpg"
+            mask = mask.astype(np.uint8) * 255
+            mask_path.parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(mask_path), mask)
+
+    task_queue.pop((video_file, frame_number))
