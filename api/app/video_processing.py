@@ -171,7 +171,7 @@ def apply_image_mask(
 ):
     if mask_path.exists():
         mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-        _, mask = cv2.threshold(mask, 8, 255, cv2.THRESH_BINARY)
+        _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
         mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
         overlay = frame.copy()
         overlay[mask > 0] = (255, 0, 0)

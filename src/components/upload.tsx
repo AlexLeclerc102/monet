@@ -13,6 +13,7 @@ export function Upload({ onUpload }: UploadProps) {
   const [uploadStatus, setUploadStatus] = useState<string>("");
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [videoName, setVideoName] = useState<string>("");
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
   const handleVideoFileChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -54,6 +55,7 @@ export function Upload({ onUpload }: UploadProps) {
     }
     formData.append("videoName", videoName);
 
+    setIsUploading(true);
     try {
       const response = await axios.post("/api/upload", formData, {
         headers: {
@@ -69,6 +71,8 @@ export function Upload({ onUpload }: UploadProps) {
       }
     } catch (error: any) {
       setUploadStatus(`Upload error: ${error.message}`);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -118,8 +122,9 @@ export function Upload({ onUpload }: UploadProps) {
           <button
             onClick={handleUpload}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            disabled={isUploading}
           >
-            Upload
+            {isUploading ? "Uploading..." : "Upload"}
           </button>
           {uploadStatus && (
             <div className="mt-2 text-sm text-red-500">{uploadStatus}</div>
