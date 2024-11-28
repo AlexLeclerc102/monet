@@ -1,5 +1,6 @@
 import base64
 import json
+import shutil
 from pathlib import Path
 from typing import Any, DefaultDict
 
@@ -14,7 +15,7 @@ from app.models import Annotation, Point
 
 def get_size_video(path) -> tuple:
     if path.is_dir():
-        images = list(path.glob("*.jpg")) + list(path.glob("*.png"))
+        images = list(path.glob("*.jpg"))
         height, width = cv2.imread(str(images[0])).shape[:2]
         return width, height
 
@@ -74,11 +75,8 @@ def get_videos_sizes(videos: list[str], images_videos: list[str]):
     invalid_images_videos = []
     for image_video in images_videos:
         if image_video not in videos:
-            images = list(settings.images_dir.glob(f"{image_video}/*.jpg")) + list(
-                settings.images_dir.glob(f"{image_video}/*.png")
-            )
+            images = list(settings.images_dir.glob(f"{image_video}/*.jpg"))
             images = [image.name for image in images]
-            print(images)
             if len(images) > 0:
                 video_size = sum(
                     [
@@ -123,7 +121,7 @@ def read_frame_from_video(video_path: Path, frame_number: int):
 
 
 def get_frame_name(images_dir: Path, frame_number: int):
-    frames = list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png"))
+    frames = list(images_dir.glob("*.jpg"))
     frames = sorted([frame.name for frame in frames])
     frame_name = frames[frame_number]
 
@@ -205,15 +203,13 @@ def copy_images_to_input(video_name: str, start_frame: int = 0, end_frame: int =
     input_dir = settings.input_dir / video_name
     clear_directory(input_dir)
 
-    images = sorted(list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png")))
+    images = sorted(list(images_dir.glob("*.jpg")))
 
     for image in images[start_frame:end_frame]:
         image_name = image.name
-        image_name = image_name.replace(".png", ".jpg")
         image_path = input_dir / image_name
 
-        frame = cv2.imread(str(image))
-        cv2.imwrite(str(image_path), frame)
+        shutil.copyfile(image, image_path)
 
 
 def add_points_to_state(

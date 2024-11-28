@@ -1,5 +1,7 @@
 from typing import Annotated, Optional
 
+import cv2
+import numpy as np
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 
 from app.config import settings
@@ -27,10 +29,8 @@ async def upload_files(
     if video:
         if videoName is not None:
             video_location = settings.video_dir / videoName
-            print(video_location, video.filename, videoName)
         elif videoName is None and video.filename is not None:
             video_location = settings.video_dir / video.filename
-            print(video_location, video.filename, videoName)
         else:
             raise HTTPException(status_code=400, detail="Video name must be provided")
 
@@ -51,9 +51,17 @@ async def upload_files(
                 raise HTTPException(
                     status_code=400, detail="Image must have a filename"
                 )
-
             file_location = image_dir / image.filename
-            with open(file_location, "wb") as f:
-                f.write(await image.read())
+
+            if image.filename.lower().endswith(".png"):
+                image_data = await image.read()
+                image_array = np.frombuffer(image_data, np.uint8)
+                img = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+                jpg_filename = image.filename.rsplit(".", 1)[0] + ".jpg"
+                file_location = image_dir / jpg_filename
+                cv2.imwrite(str(file_location), img)
+            else:
+                with open(file_location, "wb") as f:
+                    f.write(await image.read())
 
     return {"info": "files successfully uploaded"}
