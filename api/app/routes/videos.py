@@ -146,19 +146,20 @@ async def segment_and_mask(
 
     if start_frame > frame_number:
         raise HTTPException(
-            status_code=400, detail="start_frame should be less than frame_number"
+            status_code=400,
+            detail="start_frame should be less or equal than frame_number",
         )
     if end_frame > 0 and end_frame < frame_number:
         raise HTTPException(
             status_code=400, detail="end_frame should be greater than frame_number"
         )
-    if end_frame > 0 and start_frame > end_frame:
+    if end_frame >= 0 and start_frame > end_frame:
         raise HTTPException(
             status_code=400, detail="start_frame should be less than end_frame"
         )
-    if end_frame <= 0:
+    if end_frame < -1:
         raise HTTPException(
-            status_code=400, detail="end_frame should be greater than 0"
+            status_code=400, detail="end_frame should be greater than 0 or equal to -1"
         )
 
     videos, images_videos = retrieve_video_files()

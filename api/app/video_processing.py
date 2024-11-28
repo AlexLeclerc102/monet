@@ -9,7 +9,7 @@ from sam2.sam2_video_predictor import SAM2VideoPredictor
 from video_utils.image import ImageFromVideo
 
 from app.config import settings
-from app.models import Annotation
+from app.models import Annotation, Point
 
 
 def get_size_video(path) -> tuple:
@@ -216,6 +216,37 @@ def copy_images_to_input(video_name: str, start_frame: int = 0, end_frame: int =
         cv2.imwrite(str(image_path), frame)
 
 
+def add_points_to_state(
+    sam2_predictor: SAM2VideoPredictor,
+    state: Any,
+    positive_points: list[Point],
+    negative_points: list[Point],
+    width: int,
+    height: int,
+    frame_idx: int,
+):
+    points = np.array(
+        [
+            [point.x * width, point.y * height]
+            for point in positive_points + negative_points
+        ],
+        dtype=np.float32,
+    )
+    labels = np.array(
+        [1] * len(positive_points) + [0] * len(negative_points), dtype=np.int32
+    )
+
+    frame_idx, object_ids, masks = sam2_predictor.add_new_points_or_box(
+        inference_state=state,
+        frame_idx=frame_idx,
+        obj_id=0,
+        points=points,
+        labels=labels,
+    )
+
+    return frame_idx, object_ids, masks
+
+
 def process_segmentation(
     video_file: str,
     frame_number: int,
@@ -223,6 +254,7 @@ def process_segmentation(
     end_frame: int,
     sam2_predictor: SAM2VideoPredictor,
     task_queue: DefaultDict[Any, list],
+    use_all_annotations: bool = False,
 ):
     videos, images_videos = retrieve_video_files()
     is_video = False
@@ -237,13 +269,6 @@ def process_segmentation(
         print(f"Video {video_file} not found")
         task_queue.pop((video_file, frame_number))
         return
-
-    annotation_file = (
-        settings.annotation_directory / video_name / f"{frame_number}.json"
-    )
-    with open(annotation_file, "r") as f:
-        annotation = json.load(f)
-        annotation = Annotation.model_validate(annotation)
 
     mask_output_directory = settings.mask_directory / video_name
     clear_directory(mask_output_directory)
@@ -266,26 +291,38 @@ def process_segmentation(
         task_queue.pop((video_file, frame_number))
         return
 
-    points = np.array(
-        [
-            [point.x * width, point.y * height]
-            for point in annotation.positivePoints + annotation.negativePoints
-        ],
-        dtype=np.float32,
-    )
-    labels = np.array(
-        [1] * len(annotation.positivePoints) + [0] * len(annotation.negativePoints),
-        dtype=np.int32,
-    )
-
-    frame_idx = frame_number - start_frame
-    frame_idx, object_ids, masks = sam2_predictor.add_new_points_or_box(
-        inference_state=state,
-        frame_idx=frame_idx,
-        obj_id=0,
-        points=points,
-        labels=labels,
-    )
+    if not use_all_annotations:
+        annotation = get_annotation(video_name, frame_number)
+        if annotation is None:
+            task_queue.pop((video_file, frame_number))
+            return
+        add_points_to_state(
+            sam2_predictor=sam2_predictor,
+            state=state,
+            positive_points=annotation.positivePoints,
+            negative_points=annotation.negativePoints,
+            width=width,
+            height=height,
+            frame_idx=frame_number - start_frame,
+        )
+    else:
+        one_annotation = False
+        for frame_idx in range(start_frame, end_frame):
+            annotation = get_annotation(video_name, frame_idx)
+            if annotation is not None:
+                one_annotation = True
+                add_points_to_state(
+                    sam2_predictor=sam2_predictor,
+                    state=state,
+                    positive_points=annotation.positivePoints,
+                    negative_points=annotation.negativePoints,
+                    width=width,
+                    height=height,
+                    frame_idx=frame_idx - start_frame,
+                )
+        if not one_annotation:
+            task_queue.pop((video_file, frame_number))
+            return
 
     video_segments = {}
     for frame_idx, object_ids, masks in sam2_predictor.propagate_in_video(state):
@@ -293,6 +330,15 @@ def process_segmentation(
             out_obj_id: (masks[i] > 0.0).cpu().permute(1, 2, 0).numpy()
             for i, out_obj_id in enumerate(object_ids)
         }
+
+    if start_frame < frame_number:
+        for frame_idx, object_ids, masks in sam2_predictor.propagate_in_video(
+            state, reverse=True
+        ):
+            video_segments[frame_idx] = {
+                out_obj_id: (masks[i] > 0.0).cpu().permute(1, 2, 0).numpy()
+                for i, out_obj_id in enumerate(object_ids)
+            }
 
     for frame_idx, masks in video_segments.items():
         for obj_id, mask in masks.items():
