@@ -279,6 +279,15 @@ export function Canvas({ selectedVideo }: CanvasProps) {
     });
   };
 
+  const handleUseSegmentedImage = () => {
+    setUseSegmentedImage((prev) => !prev);
+    if (query.data) {
+      queryClient.invalidateQueries({
+        queryKey: ["video_frames", selectedVideo, query.data.frame_number],
+      });
+    }
+  };
+
   if (query.isError) {
     return <div>{query.error.message}</div>;
   }
@@ -315,7 +324,7 @@ export function Canvas({ selectedVideo }: CanvasProps) {
         <button
           className="m-1 py-1 px-3 bg-violet-700 rounded-md text-white"
           onClick={() => {
-            setUseSegmentedImage((prev) => !prev);
+            handleUseSegmentedImage();
           }}
         >
           {useSegmentedImage ? "Use Original Image" : "Use Segmented Image"}

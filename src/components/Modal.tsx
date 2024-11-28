@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -15,6 +15,21 @@ const Modal: React.FC<ModalProps> = ({
   title,
   children,
 }) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      } else if (event.key === "Enter" && isOpen) {
+        onConfirm();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose, onConfirm]);
+
   if (!isOpen) return null;
 
   return (

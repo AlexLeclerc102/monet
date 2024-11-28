@@ -43,10 +43,10 @@ def get_frame(
     max_height: int = 480,
     max_width: int = 640,
 ):
-    frame, video_name = read_frame(video_file, frame_number)
+    frame, video_name, frame_name = read_frame(video_file, frame_number)
     if video_name is None:
         return HTTPException(status_code=404, detail="Video not found")
-    if frame is None:
+    if frame is None or frame_name is None:
         return HTTPException(status_code=404, detail="Frame not found")
 
     annotation = get_annotation(video_name, frame_number)
@@ -62,14 +62,14 @@ def get_frame(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error encoding image: {e}") from e
 
-    mask_file = settings.mask_directory / video_name / f"{frame_number}.jpg"
+    mask_file = settings.mask_directory / video_name / frame_name
     try:
         segmented_img = apply_image_mask(
             mask_file,
             frame,
             width,
             height,
-            save_name=video_name / f"{frame_number}.jpg",
+            save_name=video_name / frame_name,
             save=True,
         )
         if segmented_img is not None:

@@ -138,11 +138,12 @@ def read_frame(video_file: str, frame_number: int):
     elif video_file in videos:
         video_name = Path(video_file.replace(".mp4", ""))
         video_path = settings.video_dir / video_file
+        frame_name = f"{frame_number}.jpg"
         frame = read_frame_from_video(video_path, frame_number)
     else:
-        return None, None
+        return None, None, None
 
-    return frame, video_name
+    return frame, video_name, frame_name
 
 
 def get_annotation(video_name: Path | str, frame_number: int):
@@ -204,12 +205,15 @@ def copy_images_to_input(video_name: str, start_frame: int = 0, end_frame: int =
     clear_directory(input_dir)
 
     images = sorted(list(images_dir.glob("*.jpg")))
+    names = [image.name for image in images]
 
     for image in images[start_frame:end_frame]:
         image_name = image.name
         image_path = input_dir / image_name
 
         shutil.copyfile(image, image_path)
+
+    return names
 
 
 def add_points_to_state(
@@ -276,9 +280,10 @@ def process_segmentation(
         n_frames, width, height = extract_frames(
             video_path, image_output_dir, start_frame, end_frame
         )
+        images_names = [f"{i}.jpg" for i in range(n_frames)]
     else:
         width, height = get_size_video(video_path)
-        copy_images_to_input(video_name, start_frame, end_frame)
+        images_names = copy_images_to_input(video_name, start_frame, end_frame)
 
     try:
         state = sam2_predictor.init_state(str(image_output_dir))
@@ -339,7 +344,7 @@ def process_segmentation(
     for frame_idx, masks in video_segments.items():
         for obj_id, mask in masks.items():
             frame_n = start_frame + frame_idx
-            mask_path = mask_output_directory / f"{frame_n}.jpg"
+            mask_path = mask_output_directory / images_names[frame_n]
             mask = mask.astype(np.uint8) * 255
             mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(mask_path), mask)
