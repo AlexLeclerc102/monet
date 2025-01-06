@@ -6,11 +6,10 @@ from typing import Any, DefaultDict
 
 import cv2
 import numpy as np
-from sam2.sam2_video_predictor import SAM2VideoPredictor
-from video_utils.image import ImageFromVideo
-
 from app.config import settings
 from app.models import Annotation, Point
+from sam2.sam2_video_predictor import SAM2VideoPredictor
+from video_utils.image import ImageFromVideo
 
 
 def get_size_video(path) -> tuple:
@@ -38,7 +37,7 @@ def extract_frames(
         success, frame = video_capture.read()
         if not success:
             raise ValueError("Failed to read frame")
-        if end_frame > 0 and frame_number >= end_frame:
+        if end_frame > 0 and frame_number > end_frame:
             break
         cv2.imwrite(str(output_dir / f"{frame_number}.jpg"), frame)
         frame_number += 1
@@ -207,6 +206,8 @@ def copy_images_to_input(video_name: str, start_frame: int = 0, end_frame: int =
     images = sorted(list(images_dir.glob("*.jpg")))
     names = [image.name for image in images]
 
+    if end_frame == -1:
+        end_frame = len(images)
     for image in images[start_frame:end_frame]:
         image_name = image.name
         image_path = input_dir / image_name
